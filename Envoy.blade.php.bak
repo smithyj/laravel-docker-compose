@@ -1,0 +1,40 @@
+@servers(['localhost' => '127.0.0.1'])
+
+@setup
+    $json = json_decode(file_get_contents("./composer.json"));
+    $version = $json->version;
+@endsetup
+
+# ========开发环境命令 START========
+# 启动开发环境
+# envoy run start
+# 停止开发环境
+# envoy run stop
+# 删除开发环境
+# envoy run rm
+
+@task('start')
+    docker-compose -f docker-compose-dev.yaml up -d
+@endtask
+
+@task('restart')
+docker-compose -f docker-compose-dev.yaml restart
+@endtask
+
+@task('stop')
+    docker-compose -f docker-compose-dev.yaml stop
+@endtask
+
+@task('rm')
+    envoy run stop
+    docker-compose -f docker-compose-dev.yaml rm --force
+@endtask
+# ========开发环境命令 END========
+
+# ========打包镜像 正式环境 START========
+@task('build')
+    # 将 xxx 替换成自定义镜像名
+    docker build -t xxx:latest .
+    # docker build -t xxx:{{ $version }} .
+@endtask
+# ========打包镜像 正式环境 END========

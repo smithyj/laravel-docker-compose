@@ -1,0 +1,95 @@
+version: "3"
+services:
+  traefik:
+    image: traefik:2.1.2
+    command:
+      - --api.insecure=true
+      - --providers.docker
+      - --entryPoints.traefik.address=:8080
+      - --entryPoints.http.address=:80
+      - --entryPoints.https.address=:443
+      - --entryPoints.redis.address=:6379
+      - --entryPoints.mysql.address=:3306
+      # 证书申请邮箱，设置成你的邮箱，接收证书过期提醒
+      - --certificatesResolvers.le.acme.email=xxx@qq.com # 请替换
+      - --certificatesResolvers.le.acme.storage=/etc/traefik/acme/acme.json
+      - --certificatesResolvers.le.acme.dnsChallenge=true
+      - --certificatesResolvers.le.acme.dnsChallenge.provider=alidns
+      # 如果遇到证书申请受速率限制，请打开此项，再次启动项目
+      # - --certificatesResolvers.le.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory
+    ports:
+      - 80:80
+      - 443:443
+      - 3306:3306
+      - 6379:6379
+      - 8080:8080
+    volumes:
+      - ${PWD}/docker/traefik/acme:/etc/traefik/acme:cached
+      - /var/run/docker.sock:/var/run/docker.sock
+    container_name: traefik
+    environment:
+      # 基于阿里云访问控制，自动为域名申请 SSL 证书添加 TXT 记录
+      ALICLOUD_ACCESS_KEY: xxx # 请替换
+      ALICLOUD_SECRET_KEY: xxx # 请替换
+      ALICLOUD_REGION_ID: cn-hangzhou # 可选
+    labels:
+      # HTTP 相关
+      - traefik.http.routers.http-traefik.rule=Host(`traefik-dev-core.xxx.com`) # Traefik 域名绑定，请替换
+      - traefik.http.routers.http-traefik.entryPoints=http
+      - traefik.http.routers.http-traefik.service=service-traefik
+      # HTTPS 相关
+      - traefik.http.routers.https-traefik.rule=Host(`traefik-dev-core.xxx.com`) # Traefik 域名绑定，请替换
+      - traefik.http.routers.https-traefik.entryPoints=https
+      # 开启 HTTPS 访问
+      - traefik.http.routers.https-traefik.tls=true
+      - traefik.http.routers.https-traefik.tls.certresolver=le
+      - traefik.http.routers.https-traefik.service=service-traefik
+      # 定义服务入口
+      - traefik.http.services.service-traefik.loadbalancer.server.port=8080
+
+  redis:
+    image: redis:alpine
+    volumes:
+      - ${PWD}/docker/redis/data:/data:cached
+    labels:
+      - traefik.tcp.routers.redis.rule=HostSNI(`*`)
+      - traefik.tcp.routers.redis.service=redis
+      - traefik.tcp.routers.redis.entryPoints=redis
+      - traefik.tcp.services.redis.loadbalancer.server.port=6379
+
+  mysql:
+    image: mysql:5.7
+    volumes:
+      - ${PWD}/docker/mysql/data:/var/lib/mysql:cached
+    environment:
+      # 定义数据库 ROOT 密码
+      MYSQL_ROOT_PASSWORD: 123456
+    labels:
+      - traefik.tcp.routers.mysql.rule=HostSNI(`*`)
+      - traefik.tcp.routers.mysql.service=mysql
+      - traefik.tcp.routers.mysql.entryPoints=mysql
+      - traefik.tcp.services.mysql.loadbalancer.server.port=3306
+
+  web-core:
+    image: xxx # 自定义镜像名称，请替换
+    volumes:
+      - ${PWD}:/var/www/html:cached
+    environment:
+      # 以下环境变量将会传递到服务中
+      RUNTIME_ENV: dev
+    labels:
+      # HTTP 相关
+      - traefik.http.routers.http-web-core.rule=Host(`dev-core.xxx.com`) # WEB服务域名绑定，请替换
+      - traefik.http.routers.http-web-core.entryPoints=http
+      - traefik.http.routers.http-web-core.service=service-web-core
+      # HTTPS 相关
+      - traefik.http.routers.https-web-core.rule=Host(`dev-core.xxx.com`) # WEB服务域名绑定，请替换
+      - traefik.http.routers.https-web-core.entryPoints=https
+      - traefik.http.routers.https-web-core.tls=true
+      - traefik.http.routers.https-web-core.tls.certresolver=le
+      - traefik.http.routers.https-web-core.service=service-web-core
+      # 定义服务入口
+      - traefik.http.services.service-web-core.loadbalancer.server.port=80
+    links:
+      - redis
+      - mysql
